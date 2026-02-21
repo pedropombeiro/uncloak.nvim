@@ -57,9 +57,9 @@ require("uncloak").setup({
 
   -- Map filetypes to built-in parser names.
   filetypes = {
-    dotenv = "env",
-    conf   = "env",
-    sh     = "env",
+    dotenv = "sh",
+    conf   = "sh",
+    sh     = "sh",
     toml   = "toml",
     yaml   = "yaml",
   },
@@ -82,7 +82,7 @@ opts = {
     -- These are merged with the defaults.
     helm = "yaml",
     ["yaml.docker-compose"] = "yaml",
-    eruby = "env",
+    eruby = "sh",
   },
 }
 ```

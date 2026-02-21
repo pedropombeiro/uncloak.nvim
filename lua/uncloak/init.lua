@@ -28,11 +28,11 @@ local defaults = {
   --- detection as a fallback when a filetype is not in this map.
   ---
   --- Example:
-  ---   filetypes = { helm = "yaml", dotenv = "env", custom_toml = "toml" }
+  ---   filetypes = { helm = "yaml", dotenv = "sh", custom_toml = "toml" }
   filetypes = {
-    dotenv = "env",
-    conf = "env",
-    sh = "env",
+    dotenv = "sh",
+    conf = "sh",
+    sh = "sh",
     toml = "toml",
     yaml = "yaml",
   },
@@ -91,7 +91,7 @@ local parsers = {}
 ---   -- or reuse the built-in yaml parser for a new filetype:
 ---   uncloak.config.filetypes["helm"] = "yaml"
 ---
----@param name string  parser identifier (e.g. "env", "yaml", "toml")
+---@param name string  parser identifier (e.g. "sh", "yaml", "toml")
 ---@param parser table parser module conforming to the contract above
 function M.register_parser(name, parser)
   vim.validate({
@@ -346,7 +346,7 @@ local function create_autocmds()
 end
 
 local function register_builtin_parsers()
-  local builtins = { "env", "toml", "yaml" }
+  local builtins = { "sh", "toml", "yaml" }
   for _, name in ipairs(builtins) do
     if not parsers[name] then
       parsers[name] = require("uncloak.parsers." .. name)

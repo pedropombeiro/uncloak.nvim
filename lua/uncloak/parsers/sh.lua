@@ -1,4 +1,4 @@
---- env parser — handles .env, .env.*, and generic KEY=VALUE config files.
+--- sh parser — handles shell-style KEY=VALUE files (.env, .env.*, conf, sh).
 ---
 --- This parser treats every line as a potential key-value pair.
 --- No section scoping is applied.
