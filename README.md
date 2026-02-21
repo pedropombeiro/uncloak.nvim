@@ -48,15 +48,27 @@ require("uncloak").setup({
   enabled = true,
 
   -- Prefix shown before the decoded value.
-  -- nil          → auto-detect: uses nvim-web-devicons lock icon, or " ⮕ " as fallback
+  -- nil          → auto-detect: uses nvim-web-devicons unlock icon, or " ⮕ " as fallback
   -- "string"     → use this literal string
   -- { icon, hl } → use icon with a custom highlight group
   prefix = nil,
 
+  -- Prefix shown before suspicious decoded values (same format as prefix).
+  -- nil → falls back to `prefix`
+  warn_prefix = nil,
+
+  -- Sign column text for decoded values (max 2 chars, or "" to disable).
+  sign = "",
+  -- Sign column text for suspicious decoded values (or "" to disable).
+  warn_sign = "",
+
   highlights = {
-    prefix = "UncloakPrefix",  -- links to NonText
-    value  = "UncloakValue",   -- links to String
-    warn   = "UncloakWarn",    -- links to DiagnosticWarn
+    prefix     = "UncloakPrefix",     -- links to DiagnosticVirtualTextInfo
+    warn_prefix = "UncloakWarnPrefix", -- links to DiagnosticVirtualTextWarn
+    value      = "UncloakValue",      -- links to DiagnosticVirtualTextInfo
+    warn       = "UncloakWarn",       -- links to DiagnosticVirtualTextWarn
+    sign_value = "UncloakSignValue",  -- links to DiagnosticInfo
+    sign_warn  = "UncloakSignWarn",   -- links to DiagnosticWarn
   },
   max_len = 120,
   min_encoded_len = 8,
