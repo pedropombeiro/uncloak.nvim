@@ -4,19 +4,28 @@ local M = {}
 local defaults = {
   --- Whether the plugin is globally enabled.
   enabled = true,
-  --- Text shown before the decoded value.
-  --- Can be a plain string (e.g. " ⮕ ") or a table { icon = "…", hl = "…" }.
-  --- When nvim-web-devicons is available, the default is the unlock icon
-  --- with its highlight; otherwise falls back to " ⮕ ".
-  prefix = nil,
+  --- Text shown before the normal decoded value.
+  prefix = "",
+  --- Text shown before the suspicious decoded value.
+  warn_prefix = "",
+  --- Sign shown for the normal decoded value.
+  sign = "",
+  --- Sign shown for the suspicious decoded value.
+  warn_sign = "",
   --- Highlight groups used for virtual text.
   highlights = {
-    --- Highlight group for the prefix icon/text.
-    prefix = "UncloakPrefix",
+    --- Highlight group for the normal prefix icon/text.
+    prefix = "",
+    --- Highlight group for the warning prefix icon/text.
+    warn_prefix = "UncloakWarnPrefix",
     --- Highlight group for normal decoded values.
     value = "UncloakValue",
     --- Highlight group for suspicious decoded values.
     warn = "UncloakWarn",
+    --- Highlight group for normal decoded values.
+    sign_value = "UncloakSignValue",
+    --- Highlight group for suspicious decoded values.
+    sign_warn = "UncloakSignWarn",
   },
   --- Maximum display length for decoded text (longer values are truncated).
   max_len = 120,
@@ -296,15 +305,25 @@ local function render(bufnr)
           display = display:sub(1, M.config.max_len - 3) .. "..."
         end
 
+        local prefix_text = is_suspicious(decoded) and M.config.warn_prefix or M.config.prefix
         local value_hl = is_suspicious(decoded) and M.config.highlights.warn or M.config.highlights.value
+        local prefix_hl
+        if string.len(M.config.highlights.prefix) ~= 0 then
+          prefix_hl = M.config.highlights.prefix
+        else
+          prefix_hl = value_hl
+        end
+        local sign_text = is_suspicious(decoded) and M.config.warn_sign or M.config.sign
+        local sign_hl = is_suspicious(decoded) and M.config.highlights.sign_warn or M.config.highlights.sign_value
 
         vim.api.nvim_buf_set_extmark(bufnr, ns, candidate.lnum - 1, 0, {
           virt_text = {
-            { M._prefix_text or " ⮕ ", M._prefix_hl or M.config.highlights.prefix },
-            { display, value_hl },
+            { prefix_text, prefix_hl },
+            { " " .. display, value_hl },
           },
           virt_text_pos = "eol",
-          hl_mode = "combine",
+          sign_text = sign_text,
+          sign_hl_group = sign_hl,
         })
       end
     end
@@ -331,9 +350,13 @@ end
 -- ---------------------------------------------------------------------------
 
 local function setup_highlights()
-  vim.api.nvim_set_hl(0, "UncloakPrefix", { link = "NonText", default = true })
-  vim.api.nvim_set_hl(0, "UncloakValue", { link = "String", default = true })
-  vim.api.nvim_set_hl(0, "UncloakWarn", { link = "DiagnosticWarn", default = true })
+  if string.len(M.config.highlights.prefix) ~= 0 then
+    vim.api.nvim_set_hl(0, "UncloakPrefix", { link = M.config.highlights.prefix, default = true })
+  end
+  vim.api.nvim_set_hl(0, "UncloakValue", { link = "DiagnosticVirtualTextInfo", default = true })
+  vim.api.nvim_set_hl(0, "UncloakWarn", { link = "DiagnosticVirtualTextWarn", default = true })
+  vim.api.nvim_set_hl(0, "UncloakSignValue", { link = "DiagnosticInfo", default = true })
+  vim.api.nvim_set_hl(0, "UncloakSignWarn", { link = "DiagnosticWarn", default = true })
 end
 
 local function create_autocmds()
