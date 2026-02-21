@@ -1,18 +1,19 @@
 # uncloak.nvim
 
-Reveal base64-encoded values hiding in your config files as inline virtual
-text — right inside Neovim.  Spot suspicious payloads, obfuscated credentials,
-or hidden shell commands at a glance.
+Reveal encoded values hiding in your config files as inline virtual text —
+right inside Neovim.  Spot suspicious payloads, obfuscated credentials, or
+hidden shell commands at a glance.
 
 ## Features
 
 - Inline decoded virtual text at end of line
 - Suspicious content highlighted with a warning colour (shell commands, URLs, …)
-- Built-in parsers for:
+- Built-in **codecs**: base64, base64url, and hex — tried in order, first match wins
+- Built-in **parsers** for:
   - **sh** — `.env`, `.env.*`, and generic `KEY=VALUE` / shell-style files
   - **toml** — mise config (`mise.toml`, `.mise.toml`, `.mise.*.toml`), scoped to `[env]` sections
   - **yaml** — any YAML file (e.g. docker-compose, Kubernetes manifests)
-- **Extensible** — map new filetypes to existing parsers, or register custom parsers, all from `opts`
+- **Extensible** — register custom codecs and parsers, or map new filetypes, all from `opts`
 - Per-buffer toggle via `:UncloakToggle`
 - Debounced updates on every text change
 
@@ -86,6 +87,9 @@ require("uncloak").setup({
 
   -- Register custom parsers (see "Extending" below).
   parsers = {},
+
+  -- Register custom codecs (see "Extending" below).
+  codecs = {},
 })
 ```
 
@@ -114,7 +118,7 @@ with:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `extract_values(lines)` | `fun(string[]): {lnum: integer, value: string}[]` | ✅ | Return 1-indexed line numbers and raw values to check for base64 |
+| `extract_values(lines)` | `fun(string[]): {lnum: integer, value: string}[]` | ✅ | Return 1-indexed line numbers and raw values to check for encoded content |
 | `detect(bufnr)` | `fun(integer): boolean` | ❌ | Filename-based fallback detection (used when no filetype mapping matches) |
 
 #### Example: reuse the built-in YAML parser for Helm charts
@@ -155,6 +159,42 @@ opts = {
 }
 ```
 
+### Register a custom codec via `opts`
+
+Custom codecs let you support additional encodings. A codec is a table with:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | `string` | ✅ | Display name shown in virtual text (e.g. `"rot13"`) |
+| `try_decode(value, config)` | `fun(string, table): string\|nil` | ✅ | Return decoded string, or `nil` if the value doesn't match this encoding |
+
+The `config` table passed to `try_decode` contains `min_encoded_len` and
+`min_printable_ratio` from the plugin config.
+
+Built-in codecs are tried in order: **base64** → **base64url** → **hex**.
+User codecs registered via `opts.codecs` are tried first, before the built-ins.
+
+#### Example: register a ROT13 codec
+
+```lua
+opts = {
+  codecs = {
+    rot13 = {
+      name = "rot13",
+      try_decode = function(value, config)
+        if #value < config.min_encoded_len then return nil end
+        local decoded = value:gsub("[a-zA-Z]", function(c)
+          local base = c:lower() == c and 97 or 65
+          return string.char((c:byte() - base + 13) % 26 + base)
+        end)
+        if decoded == value then return nil end -- no change means not ROT13
+        return decoded
+      end,
+    },
+  },
+}
+```
+
 ### Programmatic API
 
 For dynamic use (e.g. from another plugin), methods are also available:
@@ -168,11 +208,18 @@ uncloak.register_parser("my_format", {
   detect = function(bufnr) ... end,  -- optional
 })
 
--- Map a filetype to it.
+-- Register a codec at runtime.
+uncloak.register_codec({
+  name = "my_encoding",
+  try_decode = function(value, config) ... end,
+})
+
+-- Map a filetype to a parser.
 uncloak.config.filetypes["my_ft"] = "my_format"
 
--- List all registered parsers:
+-- List all registered parsers and codecs:
 vim.print(uncloak.get_parsers())
+vim.print(uncloak.get_codecs())
 ```
 
 ## Commands
@@ -188,11 +235,14 @@ vim.print(uncloak.get_parsers())
    `detect()` method.
 2. The parser's `extract_values()` scans the buffer lines and returns
    candidate key-value pairs (with section scoping for TOML `[env]` blocks).
-3. Values are validated as strict base64 (correct length, charset, padding).
-4. Decoded bytes are checked for printability to filter false positives.
-5. Surviving values are sanitised and displayed as end-of-line virtual text.
+3. Each value is passed through the **codec chain** (base64 → base64url → hex,
+   plus any user codecs). The first codec to return a decoded result wins.
+4. Each codec validates encoding-specific constraints (length, charset, padding)
+   and checks decoded bytes for printability to filter false positives.
+5. Surviving values are sanitised and displayed as end-of-line virtual text,
+   labelled with the codec name (e.g. `[base64]`, `[hex]`).
 6. Suspicious content (shell commands, URLs, …) is highlighted with
-    `UncloakWarn`.
+   `UncloakWarn`.
 
 ## Examples
 

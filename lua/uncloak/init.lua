@@ -72,6 +72,21 @@ local defaults = {
   ---     },
   ---   },
   parsers = {},
+  --- Custom codec modules to register.
+  --- Keys are codec names, values are codec tables with a `name` field
+  --- and a `try_decode(value, config)` function that returns the decoded
+  --- string or nil.
+  ---
+  --- Example — add a ROT13 codec:
+  ---   codecs = {
+  ---     rot13 = {
+  ---       name = "rot13",
+  ---       try_decode = function(value, config)
+  ---         -- your decode logic here; return decoded string or nil
+  ---       end,
+  ---     },
+  ---   },
+  codecs = {},
 }
 
 local ns = vim.api.nvim_create_namespace("uncloak")
@@ -82,6 +97,13 @@ local scheduled = {}
 --- `require("uncloak").register_parser()`.
 ---@type table<string, { detect: fun(bufnr: integer): boolean, extract_values: fun(lines: string[]): { lnum: integer, value: string }[] }>
 local parsers = {}
+
+--- Codec registry — ordered list of codec modules tried in sequence.
+--- Each codec has `name` (string) and `try_decode(value, config) -> string|nil`.
+--- Built-in codecs are registered in setup(); users can add more via `opts.codecs`
+--- or `require("uncloak").register_codec()`.
+---@type { name: string, try_decode: fun(value: string, config: table): string|nil }[]
+local codecs = {}
 
 -- ---------------------------------------------------------------------------
 -- Parser registry API
@@ -124,61 +146,54 @@ function M.get_parsers()
 end
 
 -- ---------------------------------------------------------------------------
--- Validation helpers
+-- Codec registry API
 -- ---------------------------------------------------------------------------
 
---- Strict base64 validation (standard alphabet, no URL-safe).
----@param value string
----@return boolean
-local function is_base64(value)
-  if value == "" or #value < M.config.min_encoded_len then
-    return false
-  end
-  if #value % 4 ~= 0 then
-    return false
-  end
-  local stripped = value:gsub("=+$", "")
-  if stripped == "" then
-    return false
-  end
-  local pad = #value - #stripped
-  if pad > 2 then
-    return false
-  end
-  return stripped:match("^[A-Za-z0-9+/]+$") ~= nil
-end
-
---- Return true when the decoded bytes are mostly human-readable text.
----@param decoded string
----@return boolean
-local function is_printable(decoded)
-  if decoded == "" then
-    return false
-  end
-  local printable = 0
-  for i = 1, #decoded do
-    local byte = decoded:byte(i)
-    if (byte >= 32 and byte <= 126) or byte == 9 or byte == 10 or byte == 13 then
-      printable = printable + 1
+--- Register a codec module.
+---
+--- A codec must be a table with:
+---   name: string — display name shown in virtual text (e.g. "base64", "hex")
+---   try_decode(value: string, config: table) -> string|nil
+---     Attempt to decode the value.  Return the decoded string on success,
+---     or nil if the value is not in this encoding.
+---
+---@param codec table codec module conforming to the contract above
+function M.register_codec(codec)
+  vim.validate({
+    codec = { codec, "table" },
+    name = { codec.name, "string" },
+    try_decode = { codec.try_decode, "function" },
+  })
+  -- Avoid duplicates (by name).
+  for i, existing in ipairs(codecs) do
+    if existing.name == codec.name then
+      codecs[i] = codec
+      return
     end
   end
-  return (printable / #decoded) >= M.config.min_printable_ratio
+  codecs[#codecs + 1] = codec
 end
 
---- Safely decode a base64 string, returning nil on failure.
+--- Return a copy of the codec registry (for introspection).
+---@return table[]
+function M.get_codecs()
+  return { unpack(codecs) }
+end
+
+--- Try all registered codecs in order.  Return the decoded string and
+--- codec name on the first successful decode, or nil.
 ---@param value string
----@return string|nil
-local function decode_base64(value)
-  local ok, decoded = pcall(vim.base64.decode, value)
-  if not ok then
-    return nil
+---@return string|nil decoded
+---@return string|nil codec_name
+local function try_decode(value)
+  for _, codec in ipairs(codecs) do
+    local decoded = codec.try_decode(value, M.config)
+    if decoded then
+      return decoded, codec.name
+    end
   end
-  return decoded
+  return nil, nil
 end
-
--- ---------------------------------------------------------------------------
--- Display helpers
--- ---------------------------------------------------------------------------
 
 --- Replace non-printable bytes with visible escape sequences.
 ---@param decoded string
@@ -296,36 +311,36 @@ local function render(bufnr)
 
   local candidates = parser.extract_values(lines)
   for _, candidate in ipairs(candidates) do
-    local value = candidate.value
-    if is_base64(value) then
-      local decoded = decode_base64(value)
-      if decoded and decoded ~= "" and is_printable(decoded) then
-        local display = sanitize(decoded)
-        if #display > M.config.max_len then
-          display = display:sub(1, M.config.max_len - 3) .. "..."
-        end
-
-        local prefix_text = is_suspicious(decoded) and M.config.warn_prefix or M.config.prefix
-        local value_hl = is_suspicious(decoded) and M.config.highlights.warn or M.config.highlights.value
-        local prefix_hl
-        if string.len(M.config.highlights.prefix) ~= 0 then
-          prefix_hl = M.config.highlights.prefix
-        else
-          prefix_hl = value_hl
-        end
-        local sign_text = is_suspicious(decoded) and M.config.warn_sign or M.config.sign
-        local sign_hl = is_suspicious(decoded) and M.config.highlights.sign_warn or M.config.highlights.sign_value
-
-        vim.api.nvim_buf_set_extmark(bufnr, ns, candidate.lnum - 1, 0, {
-          virt_text = {
-            { prefix_text, prefix_hl },
-            { " " .. display, value_hl },
-          },
-          virt_text_pos = "eol",
-          sign_text = sign_text,
-          sign_hl_group = sign_hl,
-        })
+    local decoded, codec_name = try_decode(candidate.value)
+    if decoded then
+      local display = sanitize(decoded)
+      if #display > M.config.max_len then
+        display = display:sub(1, M.config.max_len - 3) .. "..."
       end
+
+      local suspicious = is_suspicious(decoded)
+      local prefix_text = suspicious and M._warn_prefix_text or M._prefix_text
+      local value_hl = suspicious and M.config.highlights.warn or M.config.highlights.value
+      local prefix_hl = (M.config.highlights.prefix ~= "" and M.config.highlights.prefix) or value_hl
+      local sign_text = suspicious and M.config.warn_sign or M.config.sign
+      local sign_hl = suspicious and M.config.highlights.sign_warn or M.config.highlights.sign_value
+
+      local label = " [" .. codec_name .. "] " .. display
+
+      local extmark_opts = {
+        virt_text = {
+          { prefix_text, prefix_hl },
+          { label, value_hl },
+        },
+        virt_text_pos = "eol",
+        hl_mode = "combine",
+      }
+      if sign_text ~= "" then
+        extmark_opts.sign_text = sign_text
+        extmark_opts.sign_hl_group = sign_hl
+      end
+
+      vim.api.nvim_buf_set_extmark(bufnr, ns, candidate.lnum - 1, 0, extmark_opts)
     end
   end
 end
@@ -381,6 +396,19 @@ local function register_builtin_parsers()
   end
 end
 
+local function register_builtin_codecs()
+  local builtin_names = { "base64", "base64url", "hex" }
+  local registered = {}
+  for _, c in ipairs(codecs) do
+    registered[c.name] = true
+  end
+  for _, name in ipairs(builtin_names) do
+    if not registered[name] then
+      M.register_codec(require("uncloak.codecs." .. name))
+    end
+  end
+end
+
 --- Resolve the prefix into a { text, hl } pair for use in virt_text.
 --- Supports: nil (auto-detect), plain string, or { icon = "…", hl = "…" } table.
 ---@return string prefix_text
@@ -419,6 +447,12 @@ function M.setup(opts)
 
   -- Resolve the prefix into concrete text + highlight.
   M._prefix_text, M._prefix_hl = resolve_prefix(M.config)
+
+  -- Register user-supplied codecs first (they take precedence over builtins).
+  for _, codec in pairs(M.config.codecs) do
+    M.register_codec(codec)
+  end
+  register_builtin_codecs()
 
   -- Register user-supplied parsers first (they take precedence over builtins).
   for name, parser in pairs(M.config.parsers) do
