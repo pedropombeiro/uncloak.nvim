@@ -29,9 +29,15 @@ or hidden shell commands at a glance.
 {
   "pedropombeiro/uncloak.nvim",
   ft = { "dotenv", "conf", "toml", "yaml" },
+  event = { "BufReadPost .env", "BufReadPost .env.*" },
   opts = {},
 }
 ```
+
+> **Why `event`?** Files like `.env` are often detected as filetype `sh` by
+> Neovim. The `BufReadPost` patterns ensure uncloak loads for these files
+> regardless of their detected filetype, while the built-in `sh` parser's
+> `detect()` method handles the rest.
 
 ## Configuration
 
