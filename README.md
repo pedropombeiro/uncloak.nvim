@@ -19,6 +19,7 @@ or hidden shell commands at a glance.
 ## Requirements
 
 - Neovim **0.11+** (uses `vim.base64.decode`)
+- [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons) (optional, for icon prefix)
 
 ## Installation
 
@@ -39,8 +40,14 @@ All options with their defaults:
 ```lua
 require("uncloak").setup({
   enabled = true,
-  prefix = " 🔍 ",
-  hl_group_prefix = "UncloakPrefix",  -- links to NonText
+
+  -- Prefix shown before the decoded value.
+  -- nil          → auto-detect: uses nvim-web-devicons lock icon, or " ⮕ " as fallback
+  -- "string"     → use this literal string
+  -- { icon, hl } → use icon with a custom highlight group
+  prefix = nil,
+
+  hl_group_prefix = "UncloakPrefix",  -- links to NonText (used when prefix is a string)
   hl_group_value  = "UncloakValue",   -- links to String
   hl_group_warn   = "UncloakWarn",    -- links to DiagnosticWarn
   max_len = 120,
